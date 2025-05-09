@@ -1,0 +1,22 @@
+{
+  "embeds": [
+    {
+      "title": "📢 Database Changes in Master",
+      "description": "[View PR changes](https://github.com/your-repo/pull/123/files)",
+      "color": 3447003,
+      "fields": [
+        {
+          "name": "Migration Files Changed",
+          "value": "• `db/migrate/20230509123456_create_users.rb`\\n• `db/migrate/20230510000000_add_columns.rb`"
+        },
+        {
+          "name": "Schema Changes",
+          "value": "```diff\\n+ t.string \\\"username\\\"\n+ t.newname \\\"newname\\\"\n+ t.embedding \\\"yes_an_embedding\\\"\n- t.string \\\"old_column\\\"\n- t.removed \\\"column_name\\\"\n+ add_index \\\"users\\\", [\\\"username\\\"], name: \\\"index_users_on_username\\\"\\n```"
+        }
+      ],
+      "footer": {
+        "text": "💡 You may need to update your local database"
+      }
+    }
+  ]
+}
