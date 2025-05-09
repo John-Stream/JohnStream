@@ -6,10 +6,9 @@ GitHub Actions workflow test repository for automated PR creation from develop t
 
 - Automatically creates PR from develop to master when changes are pushed to develop
 - Prevents duplicate PRs with an existence check
-- Notifies the data team via Discord webhook when database-related files are changed
+- Notifies the data team via Discord webhook when database-related files are merged into master
 - Tracks changes in:
-  - Ruby model files in `spec/models` and `app/models` directories
-  - Database schema files (`db/schema.rb` and `db/structure.sql`)
+  - Database schema files (`db/schema.rb`)
   - Database migrations in `db/migrate` directory
 
 ## Setup Instructions
@@ -46,15 +45,22 @@ For this workflow to create pull requests, ensure that GitHub Actions has the ne
 
 ## How It Works
 
+### PR Creation Workflow
+
 1. When code is pushed to the `develop` branch, the workflow triggers
-2. It checks if any database-related files have been changed (models, schema, migrations)
-3. It verifies if a PR from `develop` to `master` already exists
-4. If no PR exists, it creates one
-5. If database changes are detected, it sends a notification to Discord
+2. It verifies if a PR from `develop` to `master` already exists
+3. If no PR exists, it creates one
+
+### Alert Workflow
+
+1. When a PR is merged into the `master` branch, a separate workflow triggers
+2. It checks if any database-related files were changed in the merged PR
+3. If database changes are detected, it sends a notification to Discord
 
 ## Troubleshooting
 
 If you encounter the "Resource not accessible by integration" error:
+
 - Verify that you've set the workflow permissions as described above
 - Make sure the workflow has the `permissions` block with appropriate rights
 - Check that the GitHub token has the necessary access
@@ -64,3 +70,4 @@ If you encounter the "Resource not accessible by integration" error:
 - `.github/workflows/` - GitHub Actions workflow configuration
 - `app/models/` - Application models directory (for testing model change detection)
 - `spec/models/` - Model specifications directory (for testing model change detection)
+- `db/` - Database files, including schema and migrations

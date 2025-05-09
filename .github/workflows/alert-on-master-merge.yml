@@ -1,0 +1,39 @@
+name: Alert on Database Changes in Master
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - closed
+
+permissions:
+  contents: read
+
+jobs:
+  send_alert:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Check for database changes in merged PR
+        id: check_models
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            model_changes:
+              - 'db/schema.rb'
+              - 'db/migrate/**/*.rb'
+          base: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Send Discord notification about database changes
+        if: steps.check_models.outputs.model_changes == 'true'
+        run: |
+          curl -H "Content-Type: application/json" -X POST -d '{
+            "content": "🚨 **ATTENTION DATA TEAM**: Database changes have been merged into master. This includes changes to schema files or migrations. Please update your local databases accordingly."
+          }' ${{ secrets.DISCORD_WEBHOOK_URL }}

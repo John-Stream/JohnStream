@@ -44,10 +44,3 @@ jobs:
           gh pr create --base master --head develop --title "The Dev becomes the Master" --body "Automated PR: Merging develop into master"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Send Discord notification about database changes
-        if: steps.check_models.outputs.model_changes == 'true'
-        run: |
-          curl -H "Content-Type: application/json" -X POST -d '{
-            "content": "🚨 **ATTENTION DATA TEAM**: Database changes detected in latest PR from develop to master. This includes changes to models, schema files, or migrations. Please review these changes as they may affect your work."
-          }' ${{ secrets.DISCORD_WEBHOOK_URL }}
