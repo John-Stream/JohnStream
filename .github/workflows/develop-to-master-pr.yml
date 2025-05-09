@@ -1,0 +1,49 @@
+name: Create PR from develop to master
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  create_pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check for model changes
+        id: check_models
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            model_changes:
+              - 'spec/models/**/*.rb'
+              - 'app/models/**/*.rb'
+
+      - name: Check if PR already exists
+        id: check_pr
+        run: |
+          if gh pr list --base master --head develop --json number --jq '. | length' | grep -q '^0$'; then
+            echo "create_pr=true" >> $GITHUB_ENV
+          else
+            echo "PR already exists. Skipping creation."
+            echo "create_pr=false" >> $GITHUB_ENV
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  
+      - name: Create Pull Request via GitHub CLI
+        if: env.create_pr == 'true'
+        run: |
+          gh pr create --base master --head develop --title "The Dev becomes the Master" --body "Automated PR: Merging develop into master"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Send Discord notification about model changes
+        if: steps.check_models.outputs.model_changes == 'true'
+        run: |
+          curl -H "Content-Type: application/json" -X POST -d '{
+            "content": "🚨 **ATTENTION DATA TEAM**: Model changes detected in latest PR from develop to master. Please review these changes as they may affect your work."
+          }' ${{ secrets.DISCORD_WEBHOOK_URL }}
