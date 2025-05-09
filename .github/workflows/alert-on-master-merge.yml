@@ -142,5 +142,3 @@ jobs:
           curl -H "Content-Type: application/json" -X POST \
             -d '{"content": "💡 **Action Required:** Check with development team about these changes"}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
-
-      # Discord notifications are now handled directly in the prepare step
