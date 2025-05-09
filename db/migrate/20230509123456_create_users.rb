@@ -4,6 +4,7 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.string :email, null: false
       t.string :name
       t.datetime :dates
+      t.vector :vector
       
       t.timestamps
     end
