@@ -42,23 +42,16 @@ jobs:
         if: steps.check_models.outputs.model_changes == 'true' && steps.changed_files.outputs.SCHEMA_CHANGED == 'true'
         id: schema_diff
         run: |
-          # Create a temporary file for the diff output
           git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- db/schema.rb > full_schema_diff.txt
           
-          # Extract actual changes, ignoring file headers
           grep '^[+-]' full_schema_diff.txt | grep -v '^[+-]\{3\}' > schema_changes.txt
           
-          # Count total changes
           TOTAL_CHANGES=$(wc -l < schema_changes.txt)
           
-          # Take first 20 lines for display
           head -n 20 schema_changes.txt > schema_preview.txt
-          
-          # Save the schema changes directly to a file we'll read later
-          # instead of trying to pass through GitHub outputs
+        
           echo "SCHEMA_PREVIEW_FILE=schema_preview.txt" >> $GITHUB_OUTPUT
           
-          # Check if we truncated the output
           if [ "$TOTAL_CHANGES" -gt 20 ]; then
             echo "SCHEMA_CHANGES_TRUNCATED=true" >> $GITHUB_OUTPUT
             echo "TOTAL_CHANGE_COUNT=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
@@ -77,28 +70,22 @@ jobs:
         if: steps.check_models.outputs.model_changes == 'true'
         id: prepare_discord
         run: |
-          # Create content variable directly in the proper format
           CONTENT='{"content": "🚨 **Database Changes in Master** 🚨\n\nDatabase schema changes have been detected."}'
           
-          # Use simple content (avoids issues with embed formatting)
           echo "$CONTENT" > discord_payload.json
           
-          # Show the content
           cat discord_payload.json
           
-          # Send the initial notification
           curl -H "Content-Type: application/json" -X POST \
             -d @discord_payload.json \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
           
-          # Add migration files as a separate message if present
           if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
             MIGRATION_MSG="📄 **Migration Files Changed:**"
             curl -H "Content-Type: application/json" -X POST \
               -d "{\"content\": \"$MIGRATION_MSG\"}" \
               ${{ secrets.DISCORD_WEBHOOK_URL }}
               
-            # Send each file as a bullet point in a separate message
             IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
             for file in "${FILES[@]}"; do
               FILE_MSG="• \`$file\`"
@@ -108,28 +95,22 @@ jobs:
             done
           fi
           
-          # Add schema changes as a separate message if present
           if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" && -n "${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }}" ]]; then
-            # Send header first
             SCHEMA_HEADER="🔄 **Schema Changes:**"
             curl -H "Content-Type: application/json" -X POST \
               -d "{\"content\": \"$SCHEMA_HEADER\"}" \
-              ${{ secrets.DISCORD_WEBHOOK_URL }}
-            
-            # Create the diff block with proper JSON escaping
+              ${{ secrets.DISCORD_WEBHOOK_URL }}  
+
             echo '```diff' > schema_code_block.txt
             cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> schema_code_block.txt
             echo '```' >> schema_code_block.txt
-            
-            # Properly escape the content for JSON
+          
             SCHEMA_DIFF=$(cat schema_code_block.txt | jq -Rs .)
             
-            # Send the escaped content in a proper JSON structure
             curl -H "Content-Type: application/json" -X POST \
               -d "{\"content\": $SCHEMA_DIFF}" \
               ${{ secrets.DISCORD_WEBHOOK_URL }}
             
-            # Add truncation notice if needed
             if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
               TRUNCATE_MSG="⚠️ *${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*"
               curl -H "Content-Type: application/json" -X POST \
@@ -138,7 +119,6 @@ jobs:
             fi
           fi
           
-          # Add footer message
           curl -H "Content-Type: application/json" -X POST \
             -d '{"content": "💡 **Action Required:** Check with development team about these changes"}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
