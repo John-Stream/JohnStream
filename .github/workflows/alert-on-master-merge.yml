@@ -82,7 +82,7 @@ jobs:
           {
             "embeds": [
               {
-                "title": "📢 Database Changes in Master",
+                "title": "Database Changes in Master",
                 "description": "[View PR changes](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)",
                 "color": 3447003,
                 "fields": []
@@ -97,35 +97,32 @@ jobs:
           
           # Add migration files field if present
           if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
-            # Format migration files nicely
-            MIGRATION_FILES=""
+            # Create a file with nicely formatted migration files
+            > migration_files.txt
             IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
             for file in "${FILES[@]}"; do
-              MIGRATION_FILES="${MIGRATION_FILES}• \`${file}\`\\n"
+              echo "• \`$file\`" >> migration_files.txt
             done
             
-            # Add field to JSON using jq
-            jq --arg files "$MIGRATION_FILES" '.embeds[0].fields += [{"name": "Migration Files Changed", "value": $files}]' discord_payload.json > temp.json && mv temp.json discord_payload.json
+            # Add field to JSON using jq's raw input
+            jq --raw-input --slurp '.embeds[0].fields += [{"name": "Migration Files Changed", "value": input}]' discord_payload.json < migration_files.txt > temp.json && mv temp.json discord_payload.json
           fi
           
           # Add schema changes field if present
           if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" && -n "${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }}" ]]; then
-            # Read schema changes directly from the file
-            SCHEMA_CONTENT=$(cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }})
-            
-            # Escape backslashes, newlines, and quotes for JSON
-            SCHEMA_CONTENT=$(echo "$SCHEMA_CONTENT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
-            
-            # Use diff syntax highlighting for proper git-style colors in Discord
-            SCHEMA_VALUE="\`\`\`diff\\n${SCHEMA_CONTENT}\\n\`\`\`"
+            # Create a clean schema diff file
+            echo '```diff' > clean_schema_diff.txt
+            cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> clean_schema_diff.txt
+            echo '```' >> clean_schema_diff.txt
             
             # Add truncation notice if needed
             if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
-              SCHEMA_VALUE="${SCHEMA_VALUE}\\n\\n*${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*"
+              echo "" >> clean_schema_diff.txt
+              echo "*${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*" >> clean_schema_diff.txt
             fi
             
-            # Add field to JSON using jq
-            jq --arg changes "$SCHEMA_VALUE" '.embeds[0].fields += [{"name": "Schema Changes", "value": $changes}]' discord_payload.json > temp.json && mv temp.json discord_payload.json
+            # Use jq's raw input mode to properly handle the multiline content
+            jq --raw-input --slurp '.embeds[0].fields += [{"name": "Schema Changes", "value": input}]' discord_payload.json < clean_schema_diff.txt > temp.json && mv temp.json discord_payload.json
           fi
           
           # Add footer with simpler message
