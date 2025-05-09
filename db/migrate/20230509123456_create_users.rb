@@ -8,6 +8,7 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.embedding :embedding
       t.newname :newname
       t.apple :shit
+      t.fake_date :fake_date
       t.timestamps
     end
     
