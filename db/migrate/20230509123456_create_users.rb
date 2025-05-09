@@ -8,6 +8,7 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.embedding :embedding
       t.newname :newname
       t.yack :yack
+      t.banner :banner
       t.timestamps
     end
     
