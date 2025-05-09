@@ -17,14 +17,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for model changes
+      - name: Check for database changes
         id: check_models
         uses: dorny/paths-filter@v2
         with:
           filters: |
             model_changes:
-              - 'spec/models/**/*.rb'
-              - 'app/models/**/*.rb'
+              - 'db/schema.rb'
+              - 'db/migrate/**/*.rb'
 
       - name: Check if PR already exists
         id: check_pr
@@ -45,9 +45,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Send Discord notification about model changes
+      - name: Send Discord notification about database changes
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
           curl -H "Content-Type: application/json" -X POST -d '{
-            "content": "🚨 **ATTENTION DATA TEAM**: Model changes detected in latest PR from develop to master. Please review these changes as they may affect your work."
+            "content": "🚨 **ATTENTION DATA TEAM**: Database changes detected in latest PR from develop to master. This includes changes to models, schema files, or migrations. Please review these changes as they may affect your work."
           }' ${{ secrets.DISCORD_WEBHOOK_URL }}

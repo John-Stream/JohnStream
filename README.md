@@ -6,8 +6,11 @@ GitHub Actions workflow test repository for automated PR creation from develop t
 
 - Automatically creates PR from develop to master when changes are pushed to develop
 - Prevents duplicate PRs with an existence check
-- Notifies the data team via Discord webhook when model files are changed
-- Tracks changes in Ruby model files in `spec/models` and `app/models` directories
+- Notifies the data team via Discord webhook when database-related files are changed
+- Tracks changes in:
+  - Ruby model files in `spec/models` and `app/models` directories
+  - Database schema files (`db/schema.rb` and `db/structure.sql`)
+  - Database migrations in `db/migrate` directory
 
 ## Setup Instructions
 
@@ -44,10 +47,10 @@ For this workflow to create pull requests, ensure that GitHub Actions has the ne
 ## How It Works
 
 1. When code is pushed to the `develop` branch, the workflow triggers
-2. It checks if any model files have been changed
+2. It checks if any database-related files have been changed (models, schema, migrations)
 3. It verifies if a PR from `develop` to `master` already exists
 4. If no PR exists, it creates one
-5. If model changes are detected, it sends a notification to Discord
+5. If database changes are detected, it sends a notification to Discord
 
 ## Troubleshooting
 
