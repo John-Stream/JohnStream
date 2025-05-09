@@ -56,96 +56,41 @@ jobs:
       - name: Send Discord notification about database changes
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
-          # Create message parts for the embedded message
-          PR_LINK="https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          MERGED_BY="${{ github.event.pull_request.merged_by.login }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
+          # Create a basic message with primary information
+          MESSAGE="🚨 **DATABASE CHANGES MERGED TO MASTER**\n\n"
+          MESSAGE+="**PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}\n"
+          MESSAGE+="**PR Link:** https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}\n"
+          MESSAGE+="**Merged by:** ${{ github.event.pull_request.merged_by.login }}\n\n"
           
-          # Format message as JSON for Discord embed
-          EMBED_TITLE="🚨 Database Changes Merged to Master"
-          
-          # Create the JSON payload with embeds for better formatting
-          JSON_PAYLOAD=$(cat << EOF
-          {
-            "embeds": [
-              {
-                "title": "$EMBED_TITLE",
-                "description": "Important database changes have been merged into the master branch that may require updates to your local environment.",
-                "color": 16711680,
-                "fields": [
-                  {
-                    "name": "Pull Request",
-                    "value": "[$PR_NUMBER - $PR_TITLE]($PR_LINK)",
-                    "inline": false
-                  },
-                  {
-                    "name": "Merged By",
-                    "value": "$MERGED_BY",
-                    "inline": true
-                  }
-          EOF
-          
-          # Add migration files field if present
+          # Add information about migration files
           if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
-            FILES_LIST=""
+            MESSAGE+="**Migration Files Changed:**\n"
             IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
             for file in "${FILES[@]}"; do
-              FILES_LIST+="• \`$file\`\\n"
+              MESSAGE+="- \`$file\`\n"
             done
-            
-            # Append migration files field
-            JSON_PAYLOAD+=$(cat << EOF
-                  ,
-                  {
-                    "name": "Migration Files Changed",
-                    "value": "$FILES_LIST",
-                    "inline": false
-                  }
-          EOF
-          )
+            MESSAGE+="\n"
           fi
           
-          # Add schema changes field if present
+          # Add information about schema changes
           if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" ]]; then
-            # Prepare schema changes with proper escaping for JSON
-            SCHEMA_CHANGES="Schema file was changed. [View full changes]($PR_LINK/files)"
+            MESSAGE+="**Schema Changes Detected**\n"
+            MESSAGE+="[View full schema changes](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)\n\n"
             
             if [[ -n "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" ]]; then
-              # Escape and format the schema changes for the JSON payload
-              DIFF_CONTENT=$(echo "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" | sed 's/"/\\"/g' | sed 's/$/\\n/g' | tr -d '\n')
+              # Take just the first few lines to avoid issues with large diffs
+              MESSAGE+="Preview of changes:\n\`\`\`diff\n"
+              MESSAGE+=$(echo "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" | head -n 10)
+              MESSAGE+="\n\`\`\`\n"
               
-              # Limit the size to avoid Discord message limit issues
-              if [[ ${#DIFF_CONTENT} -gt 800 ]]; then
-                DIFF_CONTENT="${DIFF_CONTENT:0:800}\\n\\n*Output truncated...*"
+              if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
+                MESSAGE+="*Schema changes truncated. See PR for full diff.*\n\n"
               fi
-              
-              SCHEMA_CHANGES+="\\n\\n\`\`\`diff\\n$DIFF_CONTENT\\n\`\`\`"
             fi
-            
-            # Append schema changes field
-            JSON_PAYLOAD+=$(cat << EOF
-                  ,
-                  {
-                    "name": "Schema Changes",
-                    "value": "$SCHEMA_CHANGES",
-                    "inline": false
-                  }
-          EOF
-          )
           fi
           
-          # Add footer with action required message
-          JSON_PAYLOAD+=$(cat << EOF
-                ],
-                "footer": {
-                  "text": "Action required: Please update your local databases"
-                }
-              }
-            ]
-          }
-          EOF
-          )
+          # Add action required message
+          MESSAGE+="\n**ACTION REQUIRED**: Please update your local databases accordingly."
           
-          # Post to Discord with the formatted JSON payload
-          curl -H "Content-Type: application/json" -X POST -d "$JSON_PAYLOAD" ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Send to Discord using simple content field
+          curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" ${{ secrets.DISCORD_WEBHOOK_URL }}
