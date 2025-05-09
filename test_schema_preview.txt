@@ -1,0 +1,6 @@
++ t.string "username"
++ t.newname "newname"
++ t.embedding "yes_an_embedding"
+- t.string "old_column"
+- t.removed "column_name"
++ add_index "users", ["username"], name: "index_users_on_username"
