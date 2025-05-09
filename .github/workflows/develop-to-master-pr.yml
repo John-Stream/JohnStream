@@ -5,6 +5,10 @@ on:
     branches:
       - develop
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   create_pr:
     runs-on: ubuntu-latest
@@ -26,16 +30,16 @@ jobs:
         id: check_pr
         run: |
           if gh pr list --base master --head develop --json number --jq '. | length' | grep -q '^0$'; then
-            echo "create_pr=true" >> $GITHUB_ENV
+            echo "PR_EXISTS=false" >> $GITHUB_OUTPUT
           else
             echo "PR already exists. Skipping creation."
-            echo "create_pr=false" >> $GITHUB_ENV
+            echo "PR_EXISTS=true" >> $GITHUB_OUTPUT
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
       - name: Create Pull Request via GitHub CLI
-        if: env.create_pr == 'true'
+        if: steps.check_pr.outputs.PR_EXISTS == 'false'
         run: |
           gh pr create --base master --head develop --title "The Dev becomes the Master" --body "Automated PR: Merging develop into master"
         env:
