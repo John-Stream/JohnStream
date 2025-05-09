@@ -115,6 +115,8 @@ jobs:
             
             # Escape backslashes, newlines, and quotes for JSON
             SCHEMA_CONTENT=$(echo "$SCHEMA_CONTENT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+            
+            # Use diff syntax highlighting for proper git-style colors in Discord
             SCHEMA_VALUE="\`\`\`diff\\n${SCHEMA_CONTENT}\\n\`\`\`"
             
             # Add truncation notice if needed
@@ -126,8 +128,8 @@ jobs:
             jq --arg changes "$SCHEMA_VALUE" '.embeds[0].fields += [{"name": "Schema Changes", "value": $changes}]' discord_payload.json > temp.json && mv temp.json discord_payload.json
           fi
           
-          # Add footer
-          jq '.embeds[0].footer = {"text": "💡 You may need to update your local database"}' discord_payload.json > temp.json && mv temp.json discord_payload.json
+          # Add footer with simpler message
+          jq '.embeds[0].footer = {"text": "💡 Check with dev about changes"}' discord_payload.json > temp.json && mv temp.json discord_payload.json
           
           echo "Prepared Discord payload:"
           cat discord_payload.json
