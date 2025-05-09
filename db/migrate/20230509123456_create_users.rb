@@ -8,8 +8,8 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.embedding :embedding
       t.newname :newname
       t.yack :yack
-      t.banner :banner
       t.timestamps
+      t.string :ubiqutoes
     end
     
     add_index :users, :email, unique: true
