@@ -56,29 +56,63 @@ jobs:
       - name: Send Discord notification about database changes
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
-          MESSAGE="📢 **Database Changes in Master**\n\n"
+          # Send the initial header message
+          curl -H "Content-Type: application/json" -X POST \
+            --data '{"content": "📢 **Database Changes in Master**"}' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+          
+          # Send PR link in a separate message
+          curl -H "Content-Type: application/json" -X POST \
+            --data "{\"content\": \"**PR Link:** https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files\"}" \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+          
+          # Handle migration files if present
           if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
-            MESSAGE+="**Migration Files Changed:**\n"
+            # Send migration header
+            curl -H "Content-Type: application/json" -X POST \
+              --data '{"content": "**Migration Files Changed:**"}' \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
+            
+            # Process and send each migration file on its own line
             IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
             for file in "${FILES[@]}"; do
-              MESSAGE+="- \`$file\`\n"
+              curl -H "Content-Type: application/json" -X POST \
+                --data "{\"content\": \"- \`$file\`\"}" \
+                ${{ secrets.DISCORD_WEBHOOK_URL }}
             done
-            MESSAGE+="\n"
           fi
           
+          # Handle schema changes if present
           if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" ]]; then
-            MESSAGE+="**Schema Changes:**\n"
+            # Send schema changes header
+            curl -H "Content-Type: application/json" -X POST \
+              --data '{"content": "**Schema Changes:**"}' \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
             
+            # Process and send schema diff if available
             if [[ -n "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" ]]; then
-              # Take just the first few lines to avoid issues with large diffs
-              MESSAGE+="\`\`\`diff\n"
-              MESSAGE+=$(echo "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" | head -n 15)
-              MESSAGE+="\n\`\`\`\n"
+              # Save diff to a file
+              echo "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" > schema_diff.txt
               
+              # Format the diff content for Discord's code block
+              DIFF_CONTENT=$(cat schema_diff.txt | head -n 15 | sed 's/"/\\"/g')
+              
+              # Send the diff as a code block
+              DIFF_MSG="\`\`\`diff\n${DIFF_CONTENT}\n\`\`\`"
+              curl -H "Content-Type: application/json" -X POST \
+                --data "{\"content\": \"${DIFF_MSG}\"}" \
+                ${{ secrets.DISCORD_WEBHOOK_URL }}
+              
+              # Send truncation notice if needed
               if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
-                MESSAGE+="*Schema changes truncated. [View full changes here](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)*\n\n"
+                curl -H "Content-Type: application/json" -X POST \
+                  --data "{\"content\": \"*Schema changes truncated. [View full changes here](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)*\"}" \
+                  ${{ secrets.DISCORD_WEBHOOK_URL }}
               fi
             fi
           fi
           
-          curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Send gentle note at the end
+          curl -H "Content-Type: application/json" -X POST \
+            --data '{"content": "💡 **Note**: You may need to update your local database to reflect these changes."}' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
