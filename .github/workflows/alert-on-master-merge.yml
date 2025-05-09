@@ -78,7 +78,7 @@ jobs:
         id: prepare_discord
         run: |
           # Create content variable directly in the proper format
-          CONTENT='{"content": "🚨 **Database Changes in Master** 🚨\n\nPR #${{ github.event.pull_request.number }} has been merged with database changes."}'
+          CONTENT='{"content": "🚨 **Database Changes in Master** 🚨\n\nDatabase schema changes have been detected."}'
           
           # Use simple content (avoids issues with embed formatting)
           echo "$CONTENT" > discord_payload.json
