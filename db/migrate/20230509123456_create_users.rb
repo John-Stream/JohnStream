@@ -5,6 +5,7 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.string :name
       t.datetime :dates
       t.vector :vector
+      t.embedding :embedding
       
       t.timestamps
     end
