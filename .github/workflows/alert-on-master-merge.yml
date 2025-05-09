@@ -57,10 +57,8 @@ jobs:
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
           # Create a basic message with primary information
-          MESSAGE="🚨 **DATABASE CHANGES MERGED TO MASTER**\n\n"
-          MESSAGE+="**PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}\n"
-          MESSAGE+="**PR Link:** https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}\n"
-          MESSAGE+="**Merged by:** ${{ github.event.pull_request.merged_by.login }}\n\n"
+          MESSAGE="📢 **Database Changes in Master**\n\n"
+          MESSAGE+="**PR Link:** https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files\n\n"
           
           # Add information about migration files
           if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
@@ -74,23 +72,22 @@ jobs:
           
           # Add information about schema changes
           if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" ]]; then
-            MESSAGE+="**Schema Changes Detected**\n"
-            MESSAGE+="[View full schema changes](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)\n\n"
+            MESSAGE+="**Schema Changes:**\n"
             
             if [[ -n "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" ]]; then
               # Take just the first few lines to avoid issues with large diffs
-              MESSAGE+="Preview of changes:\n\`\`\`diff\n"
-              MESSAGE+=$(echo "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" | head -n 10)
+              MESSAGE+="\`\`\`diff\n"
+              MESSAGE+=$(echo "${{ steps.schema_diff.outputs.SCHEMA_CHANGES }}" | head -n 15)
               MESSAGE+="\n\`\`\`\n"
               
               if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
-                MESSAGE+="*Schema changes truncated. See PR for full diff.*\n\n"
+                MESSAGE+="*Schema changes truncated. [View full changes here](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)*\n\n"
               fi
             fi
           fi
           
-          # Add action required message
-          MESSAGE+="\n**ACTION REQUIRED**: Please update your local databases accordingly."
+          # Add gentle notice instead of aggressive action required
+          MESSAGE+="\n💡 **Note**: You may need to update your local database to reflect these changes."
           
           # Send to Discord using simple content field
           curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" ${{ secrets.DISCORD_WEBHOOK_URL }}

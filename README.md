@@ -55,12 +55,11 @@ For this workflow to create pull requests, ensure that GitHub Actions has the ne
 
 1. When a PR is merged into the `master` branch, a separate workflow triggers
 2. It checks if any database-related files were changed in the merged PR
-3. If database changes are detected, it sends a detailed notification to Discord containing:
-   - PR title, number and link
-   - Name of the person who merged the PR
+3. If database changes are detected, it sends a focused notification to Discord containing:
+   - Link to view the PR files
    - List of migration files changed
    - Preview of schema changes with diff formatting
-   - Direct link to view all file changes in the PR
+   - A gentle reminder about updating local databases
 
 ## Troubleshooting
 
