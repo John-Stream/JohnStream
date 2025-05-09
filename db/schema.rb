@@ -19,7 +19,6 @@ ActiveRecord::Schema[7.0].define(version: 2023_05_09_123456) do
     t.index ["email"], name: "index_users_on_email", unique: true
     t.string "username"
     t.newname "newname"
-    t.embedding "embedding"
-    t.vector "vector"
+    t.embedding "not_a_column"
   end
 end

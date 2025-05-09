@@ -8,8 +8,8 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.embedding :embedding
       t.newname :newname
       t.apple :shit
-      t.fake_date :fake_date
       t.timestamps
+      t.string :username
     end
     
     add_index :users, :email, unique: true
