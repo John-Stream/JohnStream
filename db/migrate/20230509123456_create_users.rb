@@ -9,7 +9,6 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.newname :newname
       t.apple :shit
       t.timestamps
-      t.string :username
     end
     
     add_index :users, :email, unique: true
