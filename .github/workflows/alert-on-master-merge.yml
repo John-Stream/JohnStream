@@ -78,7 +78,7 @@ jobs:
         id: prepare_discord
         run: |
           # Create content variable directly in the proper format
-          CONTENT='{"content": "**Database Changes in Master**\n\n[View PR changes](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)"}'
+          CONTENT='{"content": "🚨 **Database Changes in Master** 🚨\n\nPR #${{ github.event.pull_request.number }} has been merged with database changes."}'
           
           # Use simple content (avoids issues with embed formatting)
           echo "$CONTENT" > discord_payload.json
@@ -93,7 +93,7 @@ jobs:
           
           # Add migration files as a separate message if present
           if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
-            MIGRATION_MSG="**Migration Files Changed:**"
+            MIGRATION_MSG="📄 **Migration Files Changed:**"
             curl -H "Content-Type: application/json" -X POST \
               -d "{\"content\": \"$MIGRATION_MSG\"}" \
               ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -111,7 +111,7 @@ jobs:
           # Add schema changes as a separate message if present
           if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" && -n "${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }}" ]]; then
             # Send header first
-            SCHEMA_HEADER="**Schema Changes:**"
+            SCHEMA_HEADER="🔄 **Schema Changes:**"
             curl -H "Content-Type: application/json" -X POST \
               -d "{\"content\": \"$SCHEMA_HEADER\"}" \
               ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -131,7 +131,7 @@ jobs:
             
             # Add truncation notice if needed
             if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
-              TRUNCATE_MSG="*${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*"
+              TRUNCATE_MSG="⚠️ *${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*"
               curl -H "Content-Type: application/json" -X POST \
                 -d "{\"content\": \"$TRUNCATE_MSG\"}" \
                 ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -140,7 +140,7 @@ jobs:
           
           # Add footer message
           curl -H "Content-Type: application/json" -X POST \
-            -d '{"content": "💡 Check with dev about changes"}' \
+            -d '{"content": "💡 **Action Required:** Check with development team about these changes"}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       # Discord notifications are now handled directly in the prepare step
