@@ -1,0 +1,3 @@
+{
+  "content": "Testing schema change formatting with proper coloring:\n\n```diff\n+ t.string \"username\"\n+ t.newname \"newname\"\n- t.string \"old_column\"\n```"
+}
