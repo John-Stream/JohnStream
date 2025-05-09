@@ -73,67 +73,71 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Prepare Discord notification content
+      - name: Prepare Discord notification
         if: steps.check_models.outputs.model_changes == 'true'
         id: prepare_discord
         run: |
-          # Create webhook content file for reliable JSON handling
-          cat > discord_payload.json << 'EOF'
-          {
-            "embeds": [
-              {
-                "title": "Database Changes in Master",
-                "description": "[View PR changes](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)",
-                "color": 3447003,
-                "fields": []
-              }
-            ]
-          }
-          EOF
+          # Create content variable directly in the proper format
+          CONTENT='{"content": "**Database Changes in Master**\n\n[View PR changes](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files)"}'
           
-          # Replace variables in the template
-          sed -i "s|\\\${{ github.repository }}|${{ github.repository }}|g" discord_payload.json
-          sed -i "s|\\\${{ github.event.pull_request.number }}|${{ github.event.pull_request.number }}|g" discord_payload.json
+          # Use simple content (avoids issues with embed formatting)
+          echo "$CONTENT" > discord_payload.json
           
-          # Add migration files field if present
-          if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
-            # Create a file with nicely formatted migration files
-            > migration_files.txt
-            IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
-            for file in "${FILES[@]}"; do
-              echo "• \`$file\`" >> migration_files.txt
-            done
-            
-            # Add field to JSON using jq's raw input
-            jq --raw-input --slurp '.embeds[0].fields += [{"name": "Migration Files Changed", "value": input}]' discord_payload.json < migration_files.txt > temp.json && mv temp.json discord_payload.json
-          fi
-          
-          # Add schema changes field if present
-          if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" && -n "${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }}" ]]; then
-            # Create a clean schema diff file
-            echo '```diff' > clean_schema_diff.txt
-            cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> clean_schema_diff.txt
-            echo '```' >> clean_schema_diff.txt
-            
-            # Add truncation notice if needed
-            if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
-              echo "" >> clean_schema_diff.txt
-              echo "*${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*" >> clean_schema_diff.txt
-            fi
-            
-            # Use jq's raw input mode to properly handle the multiline content
-            jq --raw-input --slurp '.embeds[0].fields += [{"name": "Schema Changes", "value": input}]' discord_payload.json < clean_schema_diff.txt > temp.json && mv temp.json discord_payload.json
-          fi
-          
-          # Add footer with simpler message
-          jq '.embeds[0].footer = {"text": "💡 Check with dev about changes"}' discord_payload.json > temp.json && mv temp.json discord_payload.json
-          
-          echo "Prepared Discord payload:"
+          # Show the content
           cat discord_payload.json
-
-      - name: Send Discord notification
-        if: steps.check_models.outputs.model_changes == 'true'
-        run: |
+          
+          # Send the initial notification
           curl -H "Content-Type: application/json" -X POST \
             -d @discord_payload.json \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
+          
+          # Add migration files as a separate message if present
+          if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
+            MIGRATION_MSG="**Migration Files Changed:**"
+            curl -H "Content-Type: application/json" -X POST \
+              -d "{\"content\": \"$MIGRATION_MSG\"}" \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
+              
+            # Send each file as a bullet point in a separate message
+            IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
+            for file in "${FILES[@]}"; do
+              FILE_MSG="• \`$file\`"
+              curl -H "Content-Type: application/json" -X POST \
+                -d "{\"content\": \"$FILE_MSG\"}" \
+                ${{ secrets.DISCORD_WEBHOOK_URL }}
+            done
+          fi
+          
+          # Add schema changes as a separate message if present
+          if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" && -n "${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }}" ]]; then
+            # Send header first
+            SCHEMA_HEADER="**Schema Changes:**"
+            curl -H "Content-Type: application/json" -X POST \
+              -d "{\"content\": \"$SCHEMA_HEADER\"}" \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
+            
+            # Send the diff block (use direct file content for code blocks)
+            echo "\`\`\`diff" > schema_code_block.txt
+            cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> schema_code_block.txt
+            echo "\`\`\`" >> schema_code_block.txt
+            
+            SCHEMA_DIFF=$(cat schema_code_block.txt)
+            curl -H "Content-Type: application/json" -X POST \
+              -d "{\"content\": \"$SCHEMA_DIFF\"}" \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
+            
+            # Add truncation notice if needed
+            if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
+              TRUNCATE_MSG="*${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*"
+              curl -H "Content-Type: application/json" -X POST \
+                -d "{\"content\": \"$TRUNCATE_MSG\"}" \
+                ${{ secrets.DISCORD_WEBHOOK_URL }}
+            fi
+          fi
+          
+          # Add footer message
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"content": "💡 Check with dev about changes"}' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      # Discord notifications are now handled directly in the prepare step
