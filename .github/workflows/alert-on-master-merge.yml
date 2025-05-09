@@ -116,14 +116,17 @@ jobs:
               -d "{\"content\": \"$SCHEMA_HEADER\"}" \
               ${{ secrets.DISCORD_WEBHOOK_URL }}
             
-            # Send the diff block (use direct file content for code blocks)
-            echo "\`\`\`diff" > schema_code_block.txt
+            # Create the diff block with proper JSON escaping
+            echo '```diff' > schema_code_block.txt
             cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> schema_code_block.txt
-            echo "\`\`\`" >> schema_code_block.txt
+            echo '```' >> schema_code_block.txt
             
-            SCHEMA_DIFF=$(cat schema_code_block.txt)
+            # Properly escape the content for JSON
+            SCHEMA_DIFF=$(cat schema_code_block.txt | jq -Rs .)
+            
+            # Send the escaped content in a proper JSON structure
             curl -H "Content-Type: application/json" -X POST \
-              -d "{\"content\": \"$SCHEMA_DIFF\"}" \
+              -d "{\"content\": $SCHEMA_DIFF}" \
               ${{ secrets.DISCORD_WEBHOOK_URL }}
             
             # Add truncation notice if needed
