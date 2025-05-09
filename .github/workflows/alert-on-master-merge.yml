@@ -56,11 +56,7 @@ jobs:
       - name: Send Discord notification about database changes
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
-          # Create a basic message with primary information
           MESSAGE="📢 **Database Changes in Master**\n\n"
-          MESSAGE+="**PR Link:** https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files\n\n"
-          
-          # Add information about migration files
           if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
             MESSAGE+="**Migration Files Changed:**\n"
             IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
@@ -70,7 +66,6 @@ jobs:
             MESSAGE+="\n"
           fi
           
-          # Add information about schema changes
           if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" ]]; then
             MESSAGE+="**Schema Changes:**\n"
             
@@ -86,8 +81,4 @@ jobs:
             fi
           fi
           
-          # Add gentle notice instead of aggressive action required
-          MESSAGE+="\n💡 **Note**: You may need to update your local database to reflect these changes."
-          
-          # Send to Discord using simple content field
           curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" ${{ secrets.DISCORD_WEBHOOK_URL }}
