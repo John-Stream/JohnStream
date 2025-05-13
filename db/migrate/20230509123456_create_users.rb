@@ -41,7 +41,18 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.scarydatatype :scary
     end
 
+    create_table :newermultilinethingtwo do |t|
+      t.string :name
+      t.string :description
+      t.timestamps
+      t.scarydatatype :scary
+    end
+
     add_index :vectors, :name, unique: true
     add_index :newmultielinething, :name, unique: true
+    add_index :newmultielinethingthree, :name, unique: true
+
+
+    add_index :bogus, :name
   end
 end
