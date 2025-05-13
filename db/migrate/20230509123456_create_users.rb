@@ -11,7 +11,11 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.timestamps
       t.string :ubiqutoes
     end
+
     
     add_index :users, :email, unique: true
+    add_index :bogus, :name
+
+    rename_table :users, :bogus
   end
 end
