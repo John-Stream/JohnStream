@@ -36,29 +36,8 @@ jobs:
         id: changed_files
         run: |
           echo "MIGRATION_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep -E 'db/migrate/.*\.rb' | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
-          echo "SCHEMA_CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep -q 'db/schema.rb' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-
-      - name: Extract schema changes
-        if: steps.check_models.outputs.model_changes == 'true' && steps.changed_files.outputs.SCHEMA_CHANGED == 'true'
-        id: schema_diff
-        run: |
-          git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- db/schema.rb > full_schema_diff.txt
-          
-          grep '^[+-]' full_schema_diff.txt | grep -v '^[+-]\{3\}' > schema_changes.txt
-          
-          TOTAL_CHANGES=$(wc -l < schema_changes.txt)
-          
-          head -n 20 schema_changes.txt > schema_preview.txt
-        
-          echo "SCHEMA_PREVIEW_FILE=schema_preview.txt" >> $GITHUB_OUTPUT
-          
-          if [ "$TOTAL_CHANGES" -gt 20 ]; then
-            echo "SCHEMA_CHANGES_TRUNCATED=true" >> $GITHUB_OUTPUT
-            echo "TOTAL_CHANGE_COUNT=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
-          else
-            echo "SCHEMA_CHANGES_TRUNCATED=false" >> $GITHUB_OUTPUT
-            echo "TOTAL_CHANGE_COUNT=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
-          fi
+          # Removing schema change detection as we no longer need it
+          # echo "SCHEMA_CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep -q 'db/schema.rb' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
 
       - name: Extract migration operations
         if: steps.check_models.outputs.model_changes == 'true' && steps.changed_files.outputs.MIGRATION_FILES != ''
@@ -82,13 +61,13 @@ jobs:
                   echo "+ ${line}" >> migration_operations.txt
                 done
               else
-                # Extract table operations - use || true to prevent failure if no matches
+                # Fixed: Extract table operations properly by placing redirection before || true
                 git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- "${file}" | 
-                grep -E '\+([ \t]*)*(create_table|drop_table|rename_table|create_join_table)' || true >> migration_operations.txt
+                grep -E '\+([ \t]*)*(create_table|drop_table|rename_table|create_join_table)' >> migration_operations.txt || true
                 
-                # Extract column operations - use || true to prevent failure if no matches
+                # Fixed: Extract column operations properly by placing redirection before || true
                 git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- "${file}" | 
-                grep -E '\+([ \t]*)*(add_column|remove_column|rename_column|change_column|change_column_default|change_column_null)' || true >> migration_operations.txt
+                grep -E '\+([ \t]*)*(add_column|remove_column|rename_column|change_column|change_column_default|change_column_null)' >> migration_operations.txt || true
               fi
             else
               echo "File not found in HEAD commit" >> migration_operations.txt
@@ -150,32 +129,9 @@ jobs:
             -d "{\"content\": $OPERATIONS_CONTENT}" \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
 
-      - name: Send schema changes
-        if: steps.check_models.outputs.model_changes == 'true' && steps.changed_files.outputs.SCHEMA_CHANGED == 'true'
-        run: |
-          curl -H "Content-Type: application/json" -X POST \
-            -d '{"content": "🔄 **Schema Changes:**"}' \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
-
-          echo '```diff' > schema_code_block.txt
-          cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> schema_code_block.txt
-          echo '```' >> schema_code_block.txt
-        
-          SCHEMA_DIFF=$(cat schema_code_block.txt | jq -Rs .)
-          
-          curl -H "Content-Type: application/json" -X POST \
-            -d "{\"content\": $SCHEMA_DIFF}" \
-            ${{ secrets.DISCORD_WEBHOOK_URL }}
-          
-          if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
-            curl -H "Content-Type: application/json" -X POST \
-              -d "{\"content\": \"⚠️ *${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*\"}" \
-              ${{ secrets.DISCORD_WEBHOOK_URL }}
-          fi
-
       - name: Send final notification with mentions
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
           curl -H "Content-Type: application/json" -X POST \
-            -d '{"content": "💡 Check with dev team about these changes <@adrianomanferdini> <@kaylamarsden>"}' \
+            -d '{"content": "💡 Check with dev team about these changes <@adrianomanferdini> <@kaylamarsden> <@johnalbertbuitenhuis>"}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
