@@ -45,6 +45,11 @@ jobs:
           
           > migration_operations.txt
           
+          # Define our target operations
+          TABLE_OPS="create_table|drop_table|rename_table|create_join_table"
+          COLUMN_OPS="add_column|remove_column|rename_column|change_column|change_column_default|change_column_null"
+          ALL_OPS="${TABLE_OPS}|${COLUMN_OPS}"
+          
           for file in "${FILES[@]}"; do
             echo "## Migration: $file" >> migration_operations.txt
             
@@ -55,32 +60,44 @@ jobs:
                 # Process new files by capturing entire create_table blocks
                 git show ${{ github.event.pull_request.head.sha }}:"${file}" > temp_file.rb
                 
-                # Use a simpler approach with sed to extract blocks
-                sed -n '/create_table/,/end/p' temp_file.rb | sed 's/^/+ /' >> migration_operations.txt
+                # Handle create_table operations
+                awk -v RS= -v ORS="\n\n" '/create_table/' temp_file.rb | sed 's/^/+ /' >> migration_operations.txt
                 
-                # Also capture other operations
-                grep -E '(drop_table|rename_table|create_join_table|add_column|remove_column|rename_column|change_column)' temp_file.rb | sed 's/^/+ /' >> migration_operations.txt || true
+                # Get all other target operations but exclude lines within blocks
+                grep -E "^[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_file.rb | 
+                  grep -v -f <(sed -n '/create_table/,/end/p' temp_file.rb) |
+                  sed 's/^/+ /' >> migration_operations.txt || true
               else
                 # For modified files, extract from git diff
                 git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- "${file}" > temp_diff.txt
                 
-                # Extract added create_table blocks 
-                cat temp_diff.txt | grep -A 50 '^\+.*create_table' | while read -r line; do
-                  if [[ "$line" == "+"* ]]; then
-                    echo "$line" >> temp_block.txt
-                    if [[ "$line" == *"end"* ]]; then
-                      cat temp_block.txt >> migration_operations.txt
-                      > temp_block.txt
-                    fi
-                  elif [[ -s temp_block.txt ]]; then
-                    cat temp_block.txt >> migration_operations.txt
-                    > temp_block.txt
-                  fi
-                done
-                rm -f temp_block.txt 2>/dev/null || true
+                # Extract create_table blocks that were added
+                grep -A 50 "^\+[[:space:]]*create_table" temp_diff.txt > temp_create_blocks.txt || true
+                if [[ -s temp_create_blocks.txt ]]; then
+                  awk '
+                    BEGIN { block=""; in_block=0; block_indent="" }
+                    /^\+[[:space:]]*create_table/ {
+                      if (in_block) print block;
+                      block=$0 "\n"; 
+                      in_block=1; 
+                      match($0, /^\+[[:space:]]*/);
+                      block_indent=substr($0, RSTART, RLENGTH);
+                      next;
+                    }
+                    in_block && $0 ~ "^" block_indent "end" { 
+                      block=block $0; 
+                      print block; 
+                      block=""; 
+                      in_block=0; 
+                      next;
+                    }
+                    in_block { block=block $0 "\n"; }
+                    END { if (in_block) print block; }
+                  ' temp_create_blocks.txt >> migration_operations.txt
+                fi
                 
-                # Extract other operations
-                grep -E '^\+.*(drop_table|rename_table|create_join_table|add_column|remove_column|rename_column|change_column)' temp_diff.txt >> migration_operations.txt || true
+                # Get other added operations (not within blocks)
+                grep -E "^\+[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_diff.txt >> migration_operations.txt || true
               fi
             else
               echo "File not found in HEAD commit" >> migration_operations.txt
