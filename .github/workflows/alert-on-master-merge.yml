@@ -60,65 +60,107 @@ jobs:
             echo "TOTAL_CHANGE_COUNT=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
           fi
 
+      - name: Extract migration operations
+        if: steps.check_models.outputs.model_changes == 'true' && steps.changed_files.outputs.MIGRATION_FILES != ''
+        id: migration_operations
+        run: |
+          IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
+          
+          # Create a file to store all operations
+          > migration_operations.txt
+          
+          for file in "${FILES[@]}"; do
+            echo "## Migration: $file" >> migration_operations.txt
+            
+            # Extract table operations
+            git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- "$file" | 
+            grep -E '\+([ \t]*)*(create_table|drop_table|rename_table|create_join_table)' >> migration_operations.txt
+            
+            # Extract column operations
+            git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- "$file" | 
+            grep -E '\+([ \t]*)*(add_column|remove_column|rename_column|change_column|change_column_default|change_column_null)' >> migration_operations.txt
+            
+            echo "" >> migration_operations.txt
+          done
+          
+          # Check if we found any operations
+          if [ -s migration_operations.txt ]; then
+            echo "HAS_OPERATIONS=true" >> $GITHUB_OUTPUT
+          else
+            echo "HAS_OPERATIONS=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install jq
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Prepare Discord notification
+      - name: Send Discord initial alert
         if: steps.check_models.outputs.model_changes == 'true'
-        id: prepare_discord
         run: |
-          CONTENT='{"content": "🚨 **Database Changes in Master** 🚨\n\nDatabase schema changes have been detected."}'
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"content": "🚨 **Database Changes in Master** 🚨\n\nDatabase schema changes have been detected."}' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Send migration files notification
+        if: steps.check_models.outputs.model_changes == 'true' && steps.changed_files.outputs.MIGRATION_FILES != ''
+        run: |
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"content": "📄 **Migration Files Changed:**"}' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+              
+          IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
+          for file in "${FILES[@]}"; do
+            FILE_MSG="• \`$file\`"
+            curl -H "Content-Type: application/json" -X POST \
+              -d "{\"content\": \"$FILE_MSG\"}" \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
+          done
+
+      - name: Send migration operations details
+        if: steps.migration_operations.outputs.HAS_OPERATIONS == 'true'
+        run: |
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"content": "🔍 **Database Operations Detected:**"}' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+            
+          echo '```diff' > operations_block.txt
+          cat migration_operations.txt >> operations_block.txt
+          echo '```' >> operations_block.txt
           
-          echo "$CONTENT" > discord_payload.json
-          
-          cat discord_payload.json
+          OPERATIONS_CONTENT=$(cat operations_block.txt | jq -Rs .)
           
           curl -H "Content-Type: application/json" -X POST \
-            -d @discord_payload.json \
+            -d "{\"content\": $OPERATIONS_CONTENT}" \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Send schema changes
+        if: steps.check_models.outputs.model_changes == 'true' && steps.changed_files.outputs.SCHEMA_CHANGED == 'true'
+        run: |
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"content": "🔄 **Schema Changes:**"}' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+          echo '```diff' > schema_code_block.txt
+          cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> schema_code_block.txt
+          echo '```' >> schema_code_block.txt
+        
+          SCHEMA_DIFF=$(cat schema_code_block.txt | jq -Rs .)
+          
+          curl -H "Content-Type: application/json" -X POST \
+            -d "{\"content\": $SCHEMA_DIFF}" \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
           
-          if [[ -n "${{ steps.changed_files.outputs.MIGRATION_FILES }}" ]]; then
-            MIGRATION_MSG="📄 **Migration Files Changed:**"
+          if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
             curl -H "Content-Type: application/json" -X POST \
-              -d "{\"content\": \"$MIGRATION_MSG\"}" \
+              -d "{\"content\": \"⚠️ *${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*\"}" \
               ${{ secrets.DISCORD_WEBHOOK_URL }}
-              
-            IFS=',' read -ra FILES <<< "${{ steps.changed_files.outputs.MIGRATION_FILES }}"
-            for file in "${FILES[@]}"; do
-              FILE_MSG="• \`$file\`"
-              curl -H "Content-Type: application/json" -X POST \
-                -d "{\"content\": \"$FILE_MSG\"}" \
-                ${{ secrets.DISCORD_WEBHOOK_URL }}
-            done
           fi
-          
-          if [[ "${{ steps.changed_files.outputs.SCHEMA_CHANGED }}" == "true" && -n "${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }}" ]]; then
-            SCHEMA_HEADER="🔄 **Schema Changes:**"
-            curl -H "Content-Type: application/json" -X POST \
-              -d "{\"content\": \"$SCHEMA_HEADER\"}" \
-              ${{ secrets.DISCORD_WEBHOOK_URL }}  
 
-            echo '```diff' > schema_code_block.txt
-            cat ${{ steps.schema_diff.outputs.SCHEMA_PREVIEW_FILE }} >> schema_code_block.txt
-            echo '```' >> schema_code_block.txt
-          
-            SCHEMA_DIFF=$(cat schema_code_block.txt | jq -Rs .)
-            
-            curl -H "Content-Type: application/json" -X POST \
-              -d "{\"content\": $SCHEMA_DIFF}" \
-              ${{ secrets.DISCORD_WEBHOOK_URL }}
-            
-            if [[ "${{ steps.schema_diff.outputs.SCHEMA_CHANGES_TRUNCATED }}" == "true" ]]; then
-              TRUNCATE_MSG="⚠️ *${{ steps.schema_diff.outputs.TOTAL_CHANGE_COUNT }} changes detected, showing first 20 only.*"
-              curl -H "Content-Type: application/json" -X POST \
-                -d "{\"content\": \"$TRUNCATE_MSG\"}" \
-                ${{ secrets.DISCORD_WEBHOOK_URL }}
-            fi
-          fi
-          
+      - name: Send final notification with mentions
+        if: steps.check_models.outputs.model_changes == 'true'
+        run: |
           curl -H "Content-Type: application/json" -X POST \
-            -d '{"content": "💡 **Action Required:** Check with development team about these changes"}' \
+            -d '{"content": "💡 Check with dev team about these changes <@adrianomanferdini> <@kaylamarsden>"}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
