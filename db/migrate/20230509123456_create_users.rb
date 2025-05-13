@@ -19,5 +19,14 @@ class CreateUsers < ActiveRecord::Migration[7.0]
 
     rename_table :users, :bogus
     rename_table :bogus, :users
+    rename_table :habilo , :uniqueness
+
+    create_table :vectors do |t|
+      t.string :name
+      t.string :description
+      t.timestamps
+    end
+
+    add_index :vectors, :name, unique: true
   end
 end
