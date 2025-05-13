@@ -15,7 +15,9 @@ class CreateUsers < ActiveRecord::Migration[7.0]
     
     add_index :users, :email, unique: true
     add_index :bogus, :name
+    add_index :users, :dates
 
     rename_table :users, :bogus
+    rename_table :bogus, :users
   end
 end
