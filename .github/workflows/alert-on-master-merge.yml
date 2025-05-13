@@ -133,5 +133,5 @@ jobs:
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
           curl -H "Content-Type: application/json" -X POST \
-            -d '{"content": "💡 Check with dev team about these changes <@adrianomanferdini> <@kaylamarsden> <@johnalbertbuitenhuis>"}' \
+            -d '{"content": "💡 Check with dev team about these changes @adrianomanferdini @kaylamarsden @johnalbertbuitenhuis"}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
