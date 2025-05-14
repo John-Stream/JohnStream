@@ -66,5 +66,15 @@ class CreateUsers < ActiveRecord::Migration[7.0]
       t.timestamps
       t.scarydatatype :scary
     end
+
+    create_table :AHHHHHHH do |t|
+      t.scarydatatype :scary
+      t.ahhh :ahh
+      t.timestamps
+    end
+
+    add index :AHHHHHHH, :scary
+
+    rename_table :AHHHHHHH, :NOOOO
   end
 end
