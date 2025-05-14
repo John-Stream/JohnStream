@@ -78,5 +78,12 @@ class CreateUsers < ActiveRecord::Migration[7.0]
     rename_table :AHHHHHHH, :NOOOO
 
     add_column :users, :new_column, :string
+
+    create_table :new_table do |t|
+      t.string :name
+      t.string :description
+      t.timestamps
+      t.scarydatatype :scary
+    end
   end
 end
