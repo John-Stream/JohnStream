@@ -162,6 +162,20 @@ jobs:
       - name: Send final notification with mentions
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
+          USER_ID_1="1335927260842033214"
+          USER_ID_2="1080420050500079677"
+          USER_ID_3="1356505700930683041"
+          
+          JSON_PAYLOAD=$(cat <<EOF
+          {
+            "content": "💡 Check with dev team about these changes <@${USER_ID_1}> <@${USER_ID_2}> <@${USER_ID_3}>",
+            "allowed_mentions": {
+              "users": ["${USER_ID_1}", "${USER_ID_2}", "${USER_ID_3}"]
+            }
+          }
+          EOF
+          )
+          
           curl -H "Content-Type: application/json" -X POST \
-            -d '{"content": "💡 Check with dev team about these changes <@adrianomanferdini> <@kaylamarsden> <@johnalbertbuitenhuis>"}' \
+            -d "$JSON_PAYLOAD" \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
