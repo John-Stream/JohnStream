@@ -76,5 +76,7 @@ class CreateUsers < ActiveRecord::Migration[7.0]
     add index :AHHHHHHH, :scary
 
     rename_table :AHHHHHHH, :NOOOO
+
+    add_column :users, :new_column, :string
   end
 end

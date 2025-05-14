@@ -45,72 +45,94 @@ jobs:
           
           > migration_operations.txt
           
-          # Define our target operations
+          # Define our target operations for logging
           TABLE_OPS="create_table|drop_table|rename_table|create_join_table"
-          COLUMN_OPS="add_column|remove_column|rename_column|change_column|change_column_default|change_column_null"
+          COLUMN_OPS="add_column|remove_column|rename_column|change_column"
           ALL_OPS="${TABLE_OPS}|${COLUMN_OPS}"
+
+          # Define critical operations that trigger mentions
+          CRITICAL_COLUMN_OPS="add_column|remove_column|rename_column|change_column"
+          CRITICAL_TABLE_OPS="drop_table|rename_table"
+          CRITICAL_OPS_REGEX="${CRITICAL_COLUMN_OPS}|${CRITICAL_TABLE_OPS}"
+          
+          has_critical_ops_flag=false
           
           for file in "${FILES[@]}"; do
             echo "## Migration: $file" >> migration_operations.txt
+            current_file_operations=""
             
             if git ls-tree -r ${{ github.event.pull_request.head.sha }} --name-only | grep -q "^${file}$"; then
               if ! git ls-tree -r ${{ github.event.pull_request.base.sha }} --name-only | grep -q "^${file}$"; then
                 echo "New migration file detected" >> migration_operations.txt
-                
-                # Process new files by capturing entire create_table blocks
                 git show ${{ github.event.pull_request.head.sha }}:"${file}" > temp_file.rb
                 
                 # Handle create_table operations
                 awk -v RS= -v ORS="\n\n" '/create_table/' temp_file.rb | sed 's/^/+ /' >> migration_operations.txt
+                current_file_operations+=$(awk -v RS= -v ORS="\n" '/create_table/' temp_file.rb)
                 
                 # Get all other target operations but exclude lines within blocks
-                grep -E "^[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_file.rb | 
+                other_ops=$(grep -E "^[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_file.rb | 
                   grep -v -f <(sed -n '/create_table/,/end/p' temp_file.rb) |
-                  sed 's/^/+ /' >> migration_operations.txt || true
+                  sed 's/^/+ /') || true
+                echo "$other_ops" >> migration_operations.txt
+                current_file_operations+=$'\n'"$other_ops"
               else
-                # For modified files, extract from git diff
                 git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} -- "${file}" > temp_diff.txt
                 
                 # Extract create_table blocks that were added
-                grep -A 50 "^\+[[:space:]]*create_table" temp_diff.txt > temp_create_blocks.txt || true
-                if [[ -s temp_create_blocks.txt ]]; then
-                  awk '
-                    BEGIN { block=""; in_block=0; block_indent="" }
-                    /^\+[[:space:]]*create_table/ {
-                      if (in_block) print block;
-                      block=$0 "\n"; 
-                      in_block=1; 
-                      match($0, /^\+[[:space:]]*/);
-                      block_indent=substr($0, RSTART, RLENGTH);
-                      next;
-                    }
-                    in_block && $0 ~ "^" block_indent "end" { 
-                      block=block $0; 
-                      print block; 
-                      block=""; 
-                      in_block=0; 
-                      next;
-                    }
-                    in_block { block=block $0 "\n"; }
-                    END { if (in_block) print block; }
-                  ' temp_create_blocks.txt >> migration_operations.txt
-                fi
+                create_blocks=$(awk '
+                  BEGIN { block=""; in_block=0; block_indent="" }
+                  /^\+[[:space:]]*create_table/ {
+                    if (in_block) { block=block $0; print block; block=""; in_block=0; } # print previous if any, then reset
+                    block=$0 "\n"; 
+                    in_block=1; 
+                    match($0, /^\+[[:space:]]*/);
+                    block_indent=substr($0, RSTART, RLENGTH);
+                    next;
+                  }
+                  in_block && $0 ~ "^" block_indent "end" { 
+                    block=block $0; 
+                    print block; 
+                    block=""; 
+                    in_block=0; 
+                    next;
+                  }
+                  in_block { block=block $0 "\n"; }
+                  END { if (in_block) print block; }
+                ' <(grep -A 50 "^\+[[:space:]]*create_table" temp_diff.txt || true) ) || true
+                echo "$create_blocks" >> migration_operations.txt
+                current_file_operations+=$'\n'"$create_blocks"
                 
                 # Get other added operations (not within blocks)
-                grep -E "^\+[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_diff.txt >> migration_operations.txt || true
+                other_added_ops=$(grep -E "^\+[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_diff.txt) || true
+                echo "$other_added_ops" >> migration_operations.txt
+                current_file_operations+=$'\n'"$other_added_ops"
               fi
             else
               echo "File not found in HEAD commit" >> migration_operations.txt
             fi
             
+            # Check for critical operations in the current file's detected operations
+            if echo "$current_file_operations" | grep -qE "(${CRITICAL_OPS_REGEX})"; then
+              has_critical_ops_flag=true
+            fi
+            
             echo "" >> migration_operations.txt
           done
           
-          # Check if we found any operations
-          if [ -s migration_operations.txt ]; then
+          if [ -s migration_operations.txt ] && [ "$(wc -l < migration_operations.txt)" -gt "${#FILES[@]}" ]; then # Check if more than just headers
             echo "HAS_OPERATIONS=true" >> $GITHUB_OUTPUT
           else
+            # If migration_operations.txt only contains headers or is empty, effectively no operations.
             echo "HAS_OPERATIONS=false" >> $GITHUB_OUTPUT
+            # Clear the file if it only contains headers to prevent false positives later
+            if [ -s migration_operations.txt ]; then > migration_operations.txt; fi
+          fi
+          
+          if [ "$has_critical_ops_flag" = true ]; then
+            echo "HAS_CRITICAL_OPERATIONS=true" >> $GITHUB_OUTPUT
+          else
+            echo "HAS_CRITICAL_OPERATIONS=false" >> $GITHUB_OUTPUT
           fi
         shell: /bin/bash -e {0}
 
@@ -124,7 +146,7 @@ jobs:
         if: steps.check_models.outputs.model_changes == 'true'
         run: |
           curl -H "Content-Type: application/json" -X POST \
-            -d '{"content": "🚨 **Database Changes in Master** 🚨\n\nDatabase schema changes have been detected."}' \
+            -d '{"content": "🚨 **Database Changes in Master** 🚨"}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Send migration files notification
@@ -160,7 +182,7 @@ jobs:
             ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Send final notification with mentions
-        if: steps.check_models.outputs.model_changes == 'true'
+        if: steps.check_models.outputs.model_changes == 'true' && steps.migration_operations.outputs.HAS_CRITICAL_OPERATIONS == 'true'
         run: |
           USER_ID_1="1335927260842033214"
           USER_ID_2="1080420050500079677"
@@ -168,7 +190,7 @@ jobs:
           
           JSON_PAYLOAD=$(cat <<EOF
           {
-            "content": "💡 Check with dev team about these changes <@${USER_ID_1}> <@${USER_ID_2}> <@${USER_ID_3}>",
+            "content": "💡 Check with dev team about these CRITICAL changes <@${USER_ID_1}> <@${USER_ID_2}> <@${USER_ID_3}>",
             "allowed_mentions": {
               "users": ["${USER_ID_1}", "${USER_ID_2}", "${USER_ID_3}"]
             }
@@ -178,4 +200,11 @@ jobs:
           
           curl -H "Content-Type: application/json" -X POST \
             -d "$JSON_PAYLOAD" \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Send final notification (log only)
+        if: steps.check_models.outputs.model_changes == 'true' && steps.migration_operations.outputs.HAS_OPERATIONS == 'true' && steps.migration_operations.outputs.HAS_CRITICAL_OPERATIONS != 'true'
+        run: |
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"content": "💡 Database changes processed (log only, no critical operations detected)."}' \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
