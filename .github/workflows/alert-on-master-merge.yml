@@ -55,6 +55,10 @@ jobs:
           CRITICAL_TABLE_OPS="drop_table|rename_table"
           CRITICAL_OPS_REGEX="${CRITICAL_COLUMN_OPS}|${CRITICAL_TABLE_OPS}"
           
+          # Define SQL patterns
+          SQL_BLOCK_PATTERN="execute[[:space:]]*<<~?SQL"
+          CRITICAL_SQL_OPS="DROP|DELETE|ALTER|TRUNCATE"
+          
           has_critical_ops_flag=false
           
           for file in "${FILES[@]}"; do
@@ -69,6 +73,23 @@ jobs:
                 # Handle create_table operations
                 awk -v RS= -v ORS="\n\n" '/create_table/' temp_file.rb | sed 's/^/+ /' >> migration_operations.txt
                 current_file_operations+=$(awk -v RS= -v ORS="\n" '/create_table/' temp_file.rb)
+                
+                # Extract SQL blocks from the file
+                awk 'BEGIN {in_sql=0; sql_block=""}
+                  /execute[[:space:]]*<<~?SQL/ {in_sql=1; sql_block="+ SQL BLOCK:\n+ "; next}
+                  /^[[:space:]]*SQL/ && in_sql {in_sql=0; print sql_block; sql_block=""; next}
+                  in_sql {sql_block = sql_block "+ " $0 "\n"}
+                  END {if (in_sql) print sql_block}
+                ' temp_file.rb >> migration_operations.txt
+                
+                # Capture SQL blocks for critical operation detection
+                sql_operations=$(awk 'BEGIN {in_sql=0; sql_block=""}
+                  /execute[[:space:]]*<<~?SQL/ {in_sql=1; sql_block=""; next}
+                  /^[[:space:]]*SQL/ && in_sql {in_sql=0; print sql_block; sql_block=""; next}
+                  in_sql {sql_block = sql_block $0 "\n"}
+                  END {if (in_sql) print sql_block}
+                ' temp_file.rb)
+                current_file_operations+=$'\n'"$sql_operations"
                 
                 # Get all other target operations but exclude lines within blocks
                 other_ops=$(grep -E "^[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_file.rb | 
@@ -103,6 +124,29 @@ jobs:
                 echo "$create_blocks" >> migration_operations.txt
                 current_file_operations+=$'\n'"$create_blocks"
                 
+                # Extract SQL blocks that were added
+                sql_blocks=$(awk '
+                  BEGIN { block=""; in_block=0; block_indent=""; }
+                  /^\+[[:space:]]*execute[[:space:]]*<<~?SQL/ {
+                    block=$0 "\n";
+                    in_block=1;
+                    match($0, /^\+[[:space:]]*/);
+                    block_indent=substr($0, RSTART, RLENGTH);
+                    next;
+                  }
+                  in_block && $0 ~ "^" block_indent "SQL" {
+                    block=block $0;
+                    print block;
+                    block="";
+                    in_block=0;
+                    next;
+                  }
+                  in_block { block=block $0 "\n"; }
+                  END { if (in_block) print block; }
+                ' temp_diff.txt) || true
+                echo "$sql_blocks" >> migration_operations.txt
+                current_file_operations+=$'\n'"$sql_blocks"
+                
                 # Get other added operations (not within blocks)
                 other_added_ops=$(grep -E "^\+[[:space:]]*(${COLUMN_OPS}|drop_table|rename_table|create_join_table)" temp_diff.txt) || true
                 echo "$other_added_ops" >> migration_operations.txt
@@ -114,6 +158,11 @@ jobs:
             
             # Check for critical operations in the current file's detected operations
             if echo "$current_file_operations" | grep -qE "(${CRITICAL_OPS_REGEX})"; then
+              has_critical_ops_flag=true
+            fi
+            
+            # Check for critical SQL operations
+            if echo "$current_file_operations" | grep -qiE "(${CRITICAL_SQL_OPS})"; then
               has_critical_ops_flag=true
             fi
             
