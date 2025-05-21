@@ -3,7 +3,7 @@ name: Alert on Database Changes in Master
 on:
   pull_request:
     branches:
-      - master
+      - develop
     types:
       - closed
 
